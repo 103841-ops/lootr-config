@@ -14,6 +14,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 @Mod.EventBusSubscriber(modid = LootrConf.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -62,7 +63,17 @@ public class ChestRandomizerHandler {
             return;
         }
         for (ServerLevel level : server.getAllLevels()) {
-            level.getChunkSource().getLoadedChunks().forEach(chunk -> processChunk(chunk, tables, weights));
+            for (Map.Entry<BlockPos, BlockEntity> entry : level.getChunk(level.getSharedSpawnPos()).getBlockEntities().entrySet()) {
+                // We iterate loaded chunks via the level's loaded block entities instead
+            }
+            // Iterate all loaded chunks properly
+            Iterable<net.minecraft.server.level.ChunkHolder> holders = level.getChunkSource().chunkMap.getChunks();
+            for (net.minecraft.server.level.ChunkHolder holder : holders) {
+                LevelChunk lc = holder.getTickingChunk();
+                if (lc != null) {
+                    processChunk(lc, tables, weights);
+                }
+            }
         }
     }
 
@@ -86,8 +97,7 @@ public class ChestRandomizerHandler {
 
             if (!isChest && !isShulker) continue;
 
-            // save(new CompoundTag()) includes LootTable if present
-            CompoundTag fullTag = be.save(new CompoundTag());
+            CompoundTag fullTag = be.saveWithFullMetadata();
             if (fullTag.contains("LootTable")) continue; // already has a loot table
 
             String chosen = pickWeighted(tables, weights);
