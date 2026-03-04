@@ -13,14 +13,15 @@ import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 @Mod.EventBusSubscriber(modid = LootrConf.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ChestRandomizerHandler {
 
     private static final Random RANDOM = new Random();
+    private static final List<LevelChunk> loadedChunksCache = new ArrayList<>();
 
     private static final java.util.Set<String> SHULKER_BLOCK_IDS = java.util.Set.of(
             "minecraft:shulker_box",
@@ -46,13 +47,13 @@ public class ChestRandomizerHandler {
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (!LootrConfConfig.RANDOMIZE_ENABLED.get()) return;
         if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getChunk() instanceof LevelChunk levelChunk)) return;
 
         List<? extends String> tables = LootrConfConfig.RANDOMIZE_TABLES.get();
         List<? extends Integer> weights = LootrConfConfig.RANDOMIZE_WEIGHTS.get();
         if (tables.isEmpty()) return;
 
-        LevelChunk chunk = serverLevel.getChunk(event.getChunk().getPos().x, event.getChunk().getPos().z);
-        processChunk(chunk, tables, weights);
+        processChunk(levelChunk, tables, weights);
     }
 
     public static void randomizeAllLoadedChests(MinecraftServer server) {
@@ -62,19 +63,35 @@ public class ChestRandomizerHandler {
             LootrConf.LOGGER.warn("LootrConf: No tables configured for randomization.");
             return;
         }
+        int count = 0;
         for (ServerLevel level : server.getAllLevels()) {
-            for (Map.Entry<BlockPos, BlockEntity> entry : level.getChunk(level.getSharedSpawnPos()).getBlockEntities().entrySet()) {
-                // We iterate loaded chunks via the level's loaded block entities instead
-            }
-            // Iterate all loaded chunks properly
-            Iterable<net.minecraft.server.level.ChunkHolder> holders = level.getChunkSource().chunkMap.getChunks();
-            for (net.minecraft.server.level.ChunkHolder holder : holders) {
-                LevelChunk lc = holder.getTickingChunk();
-                if (lc != null) {
-                    processChunk(lc, tables, weights);
-                }
+            for (BlockEntity be : level.blockEntityTickers.stream()
+                    .map(ticker -> level.getBlockEntity(ticker.getPos()))
+                    .filter(java.util.Objects::nonNull)
+                    .toList()) {
+                // This approach won't easily get all block entities.
+                // Instead, use a tracked-chunks approach:
             }
         }
+        // Better approach: track chunks as they load and process them
+        // For the manual command, we re-scan using the chunk source
+        for (ServerLevel level : server.getAllLevels()) {
+            int viewDist = level.getServer().getPlayerList().getViewDistance();
+            level.players().forEach(player -> {
+                int chunkX = player.blockPosition().getX() >> 4;
+                int chunkZ = player.blockPosition().getZ() >> 4;
+                for (int dx = -viewDist; dx <= viewDist; dx++) {
+                    for (int dz = -viewDist; dz <= viewDist; dz++) {
+                        LevelChunk lc = level.getChunkSource().getChunkNow(chunkX + dx, chunkZ + dz);
+                        if (lc != null) {
+                            processChunk(lc, tables, weights);
+                            count++;
+                        }
+                    }
+                }
+            });
+        }
+        LootrConf.LOGGER.info("LootrConf: Randomized chests in {} chunks.\", count);
     }
 
     private static void processChunk(LevelChunk chunk,
@@ -98,7 +115,7 @@ public class ChestRandomizerHandler {
             if (!isChest && !isShulker) continue;
 
             CompoundTag fullTag = be.saveWithFullMetadata();
-            if (fullTag.contains("LootTable")) continue; // already has a loot table
+            if (fullTag.contains("LootTable")) continue;
 
             String chosen = pickWeighted(tables, weights);
             if (chosen == null) continue;
