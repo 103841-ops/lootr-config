@@ -7,23 +7,24 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 @Mod.EventBusSubscriber(modid = LootrConf.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ChestRandomizerHandler {
 
     private static final Random RANDOM = new Random();
-    private static final List<LevelChunk> loadedChunksCache = new ArrayList<>();
 
-    private static final java.util.Set<String> SHULKER_BLOCK_IDS = java.util.Set.of(
+    private static final Set<String> SHULKER_BLOCK_IDS = Set.of(
             "minecraft:shulker_box",
             "minecraft:white_shulker_box",
             "minecraft:orange_shulker_box",
@@ -46,7 +47,7 @@ public class ChestRandomizerHandler {
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (!LootrConfConfig.RANDOMIZE_ENABLED.get()) return;
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getLevel() instanceof ServerLevel)) return;
         if (!(event.getChunk() instanceof LevelChunk levelChunk)) return;
 
         List<? extends String> tables = LootrConfConfig.RANDOMIZE_TABLES.get();
@@ -56,42 +57,41 @@ public class ChestRandomizerHandler {
         processChunk(levelChunk, tables, weights);
     }
 
-    public static void randomizeAllLoadedChests(MinecraftServer server) {
+    public static int randomizeAllLoadedChests(MinecraftServer server) {
         List<? extends String> tables = LootrConfConfig.RANDOMIZE_TABLES.get();
         List<? extends Integer> weights = LootrConfConfig.RANDOMIZE_WEIGHTS.get();
         if (tables.isEmpty()) {
             LootrConf.LOGGER.warn("LootrConf: No tables configured for randomization.");
-            return;
+            return 0;
         }
-        int count = 0;
+
+        int chunkCount = 0;
+        Set<Long> visited = new HashSet<>();
+
         for (ServerLevel level : server.getAllLevels()) {
-            for (BlockEntity be : level.blockEntityTickers.stream()
-                    .map(ticker -> level.getBlockEntity(ticker.getPos()))
-                    .filter(java.util.Objects::nonNull)
-                    .toList()) {
-                // This approach won't easily get all block entities.
-                // Instead, use a tracked-chunks approach:
-            }
-        }
-        // Better approach: track chunks as they load and process them
-        // For the manual command, we re-scan using the chunk source
-        for (ServerLevel level : server.getAllLevels()) {
-            int viewDist = level.getServer().getPlayerList().getViewDistance();
-            level.players().forEach(player -> {
+            int viewDist = server.getPlayerList().getViewDistance();
+            for (ServerPlayer player : level.players()) {
                 int chunkX = player.blockPosition().getX() >> 4;
                 int chunkZ = player.blockPosition().getZ() >> 4;
                 for (int dx = -viewDist; dx <= viewDist; dx++) {
                     for (int dz = -viewDist; dz <= viewDist; dz++) {
-                        LevelChunk lc = level.getChunkSource().getChunkNow(chunkX + dx, chunkZ + dz);
+                        int cx = chunkX + dx;
+                        int cz = chunkZ + dz;
+                        long key = ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+                        if (visited.contains(key)) continue;
+                        visited.add(key);
+
+                        LevelChunk lc = level.getChunkSource().getChunkNow(cx, cz);
                         if (lc != null) {
                             processChunk(lc, tables, weights);
-                            count++;
+                            chunkCount++;
                         }
                     }
                 }
-            });
+            }
         }
-        LootrConf.LOGGER.info("LootrConf: Randomized chests in {} chunks.\", count);
+        LootrConf.LOGGER.info("LootrConf: Randomized chests in " + chunkCount + " chunks.");
+        return chunkCount;
     }
 
     private static void processChunk(LevelChunk chunk,
