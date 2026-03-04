@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Forge run configs
+run/
+
+# Generated resources
+src/generated/resources/
+
+# Gradle wrapper jar (do not commit binary)
+gradle/wrapper/gradle-wrapper.jar
+
+# OS
+.DS_Store
+Thumbs.db

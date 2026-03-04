@@ -1,0 +1,32 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+[[mods]]
+    modId="lootrconf"
+    version="1.0.0"
+    displayName="LootrConf"
+    description='''
+In-game loot table editor GUI for Forge 1.20.1 with optional Lootr integration.
+Create and manage custom loot tables without writing JSON.
+    '''
+
+[[dependencies.lootrconf]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47.2.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.lootrconf]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.lootrconf]]
+    modId="lootr"
+    mandatory=false
+    versionRange="[0.7,)"
+    ordering="NONE"
+    side="BOTH"
